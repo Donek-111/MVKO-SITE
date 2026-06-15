@@ -105,9 +105,9 @@
     <h1>Тренажёр для экзамена</h1>
     <p class="sub">Всего вопросов: <b id="totalCount">0</b></p>
     <div class="menu">
-      <button class="mode-btn" onclick="startMode('random')">
-        <span class="title">🎲 Случайный режим (экзамен)</span>
-        <span class="desc">Вопросы идут в случайном порядке.</span>
+      <button class="mode-btn" onclick="startMode('exam')">
+        <span class="title">📝 Экзамен</span>
+        <span class="desc">200 случайных вопросов из всей базы. В конце — результат в процентах.</span>
       </button>
       <button class="mode-btn" onclick="startMode('train')">
         <span class="title">📚 Тренировка (по порядку)</span>
@@ -189,7 +189,7 @@
   let selected = new Set();
   let sessionCorrect = 0, sessionTotal = 0;
   let sessionWrongIdx = []; // индексы вопросов, в которых ошиблись в этом проходе
-  let currentMode = 'random';
+  let currentMode = 'exam';
 
   const MIST_KEY = 'examTrainerMistakes';
 
@@ -237,9 +237,11 @@
     return a;
   }
 
+  const EXAM_SIZE = 200; // сколько случайных вопросов в режиме «Экзамен»
+
   function startMode(mode) {
     currentMode = mode;
-    if (mode === 'random')      order = shuffle([...QUESTIONS.keys()]);
+    if (mode === 'exam')        order = shuffle([...QUESTIONS.keys()]).slice(0, EXAM_SIZE);
     else if (mode === 'train')  order = [...QUESTIONS.keys()];
     else if (mode === 'mistakes') order = getMistakes().filter(i => i < QUESTIONS.length);
 

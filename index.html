@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тренажёр для экзамена</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1f2733;
+    --muted: #6b7785;
+    --primary: #3b6fed;
+    --primary-dark: #2c55c0;
+    --green: #1faa4d;
+    --green-bg: #e4f7ea;
+    --red: #d83a3a;
+    --red-bg: #fce4e4;
+    --border: #dde3ec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+
+  .menu { display: grid; gap: 12px; }
+  .mode-btn {
+    display: flex; flex-direction: column; gap: 4px;
+    text-align: left; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px; cursor: pointer; transition: .15s;
+    font: inherit; color: inherit;
+  }
+  .mode-btn:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(59,111,237,.12); }
+  .mode-btn .title { font-size: 17px; font-weight: 600; }
+  .mode-btn .desc { font-size: 13px; color: var(--muted); }
+  .mode-btn .badge { font-size: 12px; color: var(--primary); font-weight: 600; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .progress { font-size: 14px; color: var(--muted); }
+  .btn {
+    background: var(--primary); color: #fff; border: none; border-radius: 10px;
+    padding: 11px 20px; font-size: 15px; font-weight: 600; cursor: pointer; transition: .15s;
+  }
+  .btn:hover { background: var(--primary-dark); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--primary); border: 1px solid var(--border); }
+  .btn.ghost:hover { border-color: var(--primary); background: #f0f4ff; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(20,40,80,.05); }
+  .qtext { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+
+  .options { display: grid; gap: 10px; }
+  .opt {
+    display: flex; align-items: flex-start; gap: 12px;
+    border: 2px solid var(--border); border-radius: 12px; padding: 14px 16px;
+    cursor: pointer; transition: .12s; background: #fff;
+  }
+  .opt:hover { border-color: var(--primary); }
+  .opt.selected { border-color: var(--primary); background: #f0f4ff; }
+  .opt input { margin-top: 3px; width: 18px; height: 18px; flex: none; accent-color: var(--primary); }
+  .opt .label { flex: 1; }
+
+  /* состояния после проверки */
+  .opt.correct { border-color: var(--green); background: var(--green-bg); }
+  .opt.wrong   { border-color: var(--red);   background: var(--red-bg); }
+  .opt.locked { cursor: default; }
+  .mark { font-weight: 700; margin-left: 6px; }
+  .mark.ok { color: var(--green); }
+  .mark.no { color: var(--red); }
+
+  .verdict { margin: 18px 0 0; padding: 14px 16px; border-radius: 12px; font-weight: 600; }
+  .verdict.ok { background: var(--green-bg); color: var(--green); }
+  .verdict.no { background: var(--red-bg); color: var(--red); }
+
+  .theory { margin-top: 14px; padding: 16px; background: #f7f9fc; border-left: 4px solid var(--primary); border-radius: 8px; }
+  .theory .t-title { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .footer-link { display: inline-block; margin-top: 22px; color: var(--muted); font-size: 14px; cursor: pointer; text-decoration: underline; }
+
+  .stats { display: flex; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; }
+  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 20px; }
+  .result-big { text-align: center; padding: 30px 10px; }
+  .result-big .pct { font-size: 48px; font-weight: 800; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ГЛАВНОЕ МЕНЮ -->
+  <div id="menu">
+    <h1>Тренажёр для экзамена</h1>
+    <p class="sub">Всего вопросов: <b id="totalCount">0</b></p>
+    <div class="menu">
+      <button class="mode-btn" onclick="startMode('random')">
+        <span class="title">🎲 Случайный режим (экзамен)</span>
+        <span class="desc">Вопросы идут в случайном порядке.</span>
+      </button>
+      <button class="mode-btn" onclick="startMode('train')">
+        <span class="title">📚 Тренировка (по порядку)</span>
+        <span class="desc">Все вопросы подряд, от первого до последнего.</span>
+      </button>
+      <button class="mode-btn" onclick="startMode('mistakes')">
+        <span class="title">❌ Работа над ошибками</span>
+        <span class="desc">Только вопросы, в которых ты ошибся.</span>
+        <span class="badge" id="mistakesBadge">Ошибок пока нет</span>
+      </button>
+    </div>
+    <span class="footer-link" onclick="resetMistakes()">Очистить список ошибок</span>
+  </div>
+
+  <!-- ЭКРАН ВОПРОСА -->
+  <div id="quiz" class="hidden">
+    <div class="topbar">
+      <button class="btn ghost" onclick="goMenu()">← В меню</button>
+      <span class="progress" id="progress"></span>
+    </div>
+    <div class="card">
+      <p class="qtext" id="qtext"></p>
+      <p class="hint" id="hint"></p>
+      <div class="options" id="options"></div>
+      <div id="verdict"></div>
+      <div id="theory"></div>
+      <div class="actions" id="actions"></div>
+    </div>
+  </div>
+
+  <!-- ЭКРАН РЕЗУЛЬТАТА -->
+  <div id="result" class="hidden">
+    <div class="topbar">
+      <button class="btn ghost" onclick="goMenu()">← В меню</button>
+    </div>
+    <div class="card result-big">
+      <div class="pct" id="resPct"></div>
+      <p id="resText"></p>
+      <div class="actions" style="justify-content:center">
+        <button class="btn" onclick="goMenu()">В меню</button>
+        <button class="btn ghost" id="reviewBtn">Решить ошибки этого прохода</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ============================================================
+  //  ВОПРОСЫ (формат описан ниже). Сюда я добавлю твои 500+.
+  //  correct — всегда массив индексов (с нуля): один ответ [1], несколько [0,2]
+  // ============================================================
+  const QUESTIONS = [
+    {
+      q: "Пример. Какие из перечисленного являются языками программирования?",
+      options: ["Python", "HTML", "JavaScript", "HTTP"],
+      correct: [0, 2],
+      theory: "Python и JavaScript — языки программирования. HTML — язык разметки, а HTTP — сетевой протокол."
+    },
+    {
+      q: "Пример. Сколько бит в одном байте?",
+      options: ["4", "8", "16", "32"],
+      correct: [1],
+      theory: "В одном байте 8 бит. Это стандартная единица измерения информации."
+    },
+    {
+      q: "Пример. Какие планеты относятся к газовым гигантам?",
+      options: ["Юпитер", "Марс", "Сатурн", "Венера"],
+      correct: [0, 2],
+      theory: "Газовые гиганты Солнечной системы — Юпитер и Сатурн. Марс и Венера — планеты земной группы."
+    },
+  ];
+</script>
+<script>
+  // ---------- состояние ----------
+  let order = [];        // массив индексов вопросов в текущем проходе
+  let pos = 0;           // позиция в order
+  let answered = false;  // отвечен ли текущий вопрос
+  let selected = new Set();
+  let sessionCorrect = 0, sessionTotal = 0;
+  let sessionWrongIdx = []; // индексы вопросов, в которых ошиблись в этом проходе
+  let currentMode = 'random';
+
+  const MIST_KEY = 'examTrainerMistakes';
+
+  // Список ошибок храним в памяти; в localStorage сохраняем "по возможности"
+  // (при открытии файла через file:// запись может быть недоступна — тогда
+  //  ошибки всё равно работают в рамках текущего сеанса).
+  let mistakesMem = [];
+  (function loadMistakes() {
+    try { mistakesMem = JSON.parse(localStorage.getItem(MIST_KEY)) || []; }
+    catch { mistakesMem = []; }
+  })();
+
+  function getMistakes() { return mistakesMem.slice(); }
+  function saveMistakes(arr) {
+    mistakesMem = [...new Set(arr)];
+    try { localStorage.setItem(MIST_KEY, JSON.stringify(mistakesMem)); }
+    catch { /* localStorage недоступен — храним только в памяти */ }
+  }
+  function addMistake(idx) { saveMistakes([...mistakesMem, idx]); }
+  function removeMistake(idx) { saveMistakes(mistakesMem.filter(i => i !== idx)); }
+
+  // ---------- меню ----------
+  function refreshMenu() {
+    document.getElementById('totalCount').textContent = QUESTIONS.length;
+    const m = getMistakes().filter(i => i < QUESTIONS.length);
+    document.getElementById('mistakesBadge').textContent =
+      m.length ? `Вопросов с ошибками: ${m.length}` : 'Ошибок пока нет';
+  }
+
+  function resetMistakes() {
+    if (confirm('Очистить весь список ошибок?')) { saveMistakes([]); refreshMenu(); }
+  }
+
+  function shuffle(a) {
+    const orig = a.slice();
+    a = a.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    // на случай совпадения с исходным порядком (заметно при малом числе вопросов)
+    if (a.length > 1 && a.every((v, k) => v === orig[k])) {
+      [a[0], a[a.length - 1]] = [a[a.length - 1], a[0]];
+    }
+    return a;
+  }
+
+  function startMode(mode) {
+    currentMode = mode;
+    if (mode === 'random')      order = shuffle([...QUESTIONS.keys()]);
+    else if (mode === 'train')  order = [...QUESTIONS.keys()];
+    else if (mode === 'mistakes') order = getMistakes().filter(i => i < QUESTIONS.length);
+
+    if (order.length === 0) {
+      alert(mode === 'mistakes'
+        ? 'Список ошибок пуст — сначала порешай вопросы в других режимах.'
+        : 'Нет вопросов. Добавь их в массив QUESTIONS в начале файла.');
+      return;
+    }
+    pos = 0; sessionCorrect = 0; sessionTotal = 0; sessionWrongIdx = [];
+    show('quiz');
+    renderQuestion();
+  }
+
+  // ---------- отрисовка вопроса ----------
+  function renderQuestion() {
+    answered = false;
+    selected = new Set();
+    const qIdx = order[pos];
+    const q = QUESTIONS[qIdx];
+
+    document.getElementById('progress').textContent =
+      `Вопрос ${pos + 1} из ${order.length}` +
+      (sessionTotal ? `  ·  верно ${sessionCorrect}/${sessionTotal}` : '');
+    document.getElementById('qtext').textContent = q.q;
+    document.getElementById('hint').textContent =
+      q.correct.length > 1 ? 'Можно выбрать несколько вариантов.' : 'Выбери один вариант.';
+
+    const optsEl = document.getElementById('options');
+    optsEl.innerHTML = '';
+    q.options.forEach((opt, i) => {
+      const div = document.createElement('div');
+      div.className = 'opt';
+      div.dataset.i = i;
+      const multi = q.correct.length > 1;
+      div.innerHTML = `<input type="${multi ? 'checkbox' : 'radio'}" name="opt"> <span class="label"></span>`;
+      div.querySelector('.label').textContent = opt;
+      div.onclick = () => toggle(div, i, multi);
+      optsEl.appendChild(div);
+    });
+
+    document.getElementById('verdict').innerHTML = '';
+    document.getElementById('theory').innerHTML = '';
+    renderActions();
+  }
+
+  function toggle(div, i, multi) {
+    if (answered) return;
+    if (!multi) {
+      selected.clear();
+      document.querySelectorAll('.opt').forEach(o => {
+        o.classList.remove('selected');
+        o.querySelector('input').checked = false;
+      });
+      selected.add(i); div.classList.add('selected');
+      div.querySelector('input').checked = true;
+    } else {
+      if (selected.has(i)) { selected.delete(i); div.classList.remove('selected'); div.querySelector('input').checked = false; }
+      else { selected.add(i); div.classList.add('selected'); div.querySelector('input').checked = true; }
+    }
+    renderActions();
+  }
+
+  function renderActions() {
+    const el = document.getElementById('actions');
+    el.innerHTML = '';
+    if (!answered) {
+      const b = document.createElement('button');
+      b.className = 'btn'; b.textContent = 'Ответить';
+      b.disabled = selected.size === 0;
+      b.onclick = checkAnswer;
+      el.appendChild(b);
+    } else {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = (pos + 1 < order.length) ? 'Следующий вопрос →' : 'Завершить';
+      b.onclick = next;
+      el.appendChild(b);
+    }
+  }
+
+  // ---------- проверка ----------
+  function checkAnswer() {
+    answered = true;
+    const qIdx = order[pos];
+    const q = QUESTIONS[qIdx];
+    const correctSet = new Set(q.correct);
+
+    const isCorrect = selected.size === correctSet.size &&
+                      [...selected].every(i => correctSet.has(i));
+
+    document.querySelectorAll('.opt').forEach(div => {
+      const i = +div.dataset.i;
+      div.classList.add('locked');
+      div.querySelector('input').disabled = true;
+      const isRight = correctSet.has(i);
+      const wasChosen = selected.has(i);
+      if (isRight) { div.classList.add('correct'); div.innerHTML += '<span class="mark ok">✓ верно</span>'; }
+      else if (wasChosen) { div.classList.add('wrong'); div.innerHTML += '<span class="mark no">✗ неверно</span>'; }
+    });
+
+    sessionTotal++;
+    const v = document.getElementById('verdict');
+    if (isCorrect) {
+      sessionCorrect++;
+      v.className = 'verdict ok'; v.textContent = '✓ Правильно!';
+      if (currentMode === 'mistakes') removeMistake(qIdx); // исправил ошибку — убираем из списка
+    } else {
+      v.className = 'verdict no'; v.textContent = '✗ Неправильно.';
+      addMistake(qIdx);
+      if (!sessionWrongIdx.includes(qIdx)) sessionWrongIdx.push(qIdx);
+    }
+
+    if (q.theory) {
+      document.getElementById('theory').innerHTML =
+        `<div class="theory"><div class="t-title">Пояснение</div><div></div></div>`;
+      document.querySelector('#theory .theory div:last-child').textContent = q.theory;
+    }
+
+    document.getElementById('progress').textContent =
+      `Вопрос ${pos + 1} из ${order.length}  ·  верно ${sessionCorrect}/${sessionTotal}`;
+    renderActions();
+  }
+
+  function next() {
+    if (pos + 1 < order.length) { pos++; renderQuestion(); window.scrollTo(0,0); }
+    else finish();
+  }
+
+  function finish() {
+    show('result');
+    const pct = sessionTotal ? Math.round(sessionCorrect / sessionTotal * 100) : 0;
+    const pctEl = document.getElementById('resPct');
+    pctEl.textContent = pct + '%';
+    pctEl.style.color = pct >= 80 ? 'var(--green)' : pct >= 50 ? '#d99100' : 'var(--red)';
+    document.getElementById('resText').textContent =
+      `Правильных ответов: ${sessionCorrect} из ${sessionTotal}.`;
+    const rb = document.getElementById('reviewBtn');
+    if (sessionWrongIdx.length) {
+      rb.classList.remove('hidden');
+      rb.onclick = () => { order = sessionWrongIdx.slice(); pos = 0; sessionCorrect = 0; sessionTotal = 0; sessionWrongIdx = []; show('quiz'); renderQuestion(); };
+    } else { rb.classList.add('hidden'); }
+  }
+
+  // ---------- навигация ----------
+  function show(id) {
+    ['menu','quiz','result'].forEach(s => document.getElementById(s).classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    if (id === 'menu') refreshMenu();
+  }
+  function goMenu() { show('menu'); }
+
+  // старт
+  refreshMenu();
+</script>
+</body>
+</html>

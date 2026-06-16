@@ -172,6 +172,7 @@
       </button>
     </div>
     <span class="footer-link" onclick="resetMistakes()">Очистить список ошибок</span>
+    <span class="footer-link" style="margin-left:18px" onclick="resetAllStats()">Сбросить всю статистику</span>
 
     <!-- СТАТИСТИКА -->
     <div class="stats">
@@ -366,6 +367,13 @@ window.dispatchEvent(new Event('fb-ready'));
     renderCharts();
   }
   function resetMistakes(){ if(confirm('Очистить список ошибок?')){ saveMistakes([]); refreshMenu(); } }
+  function resetAllStats(){
+    if(!confirm('Сбросить ВСЮ статистику?\n\nБудут удалены:\n• список ошибок\n• лог ошибок (графики)\n• счётчик решённых вопросов\n• незавершённый экзамен\n\nЭто действие нельзя отменить.')) return;
+    mistakesMem = []; attemptsMem = {}; errorLogMem = {}; resumeExam = null;
+    scheduleSave();
+    refreshMenu();
+  }
+  window.resetAllStats = resetAllStats;
 
   // ---------- круговые диаграммы (donut, чистый SVG) ----------
   function aggregateByTheme(map){

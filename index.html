@@ -89,9 +89,10 @@
   .chart-card svg { display:block; margin:0 auto; }
   .chart-card svg path { transition:opacity .15s, transform .15s; transform-origin:center; cursor:pointer; }
   .chart-card svg path:hover { opacity:.85; transform:scale(1.03); }
-  .legend { display:flex; flex-wrap:wrap; gap:6px 12px; justify-content:center; margin-top:10px; font-size:12px; color:var(--muted); }
-  .legend .lg { display:flex; align-items:center; gap:5px; }
-  .legend .sw { width:10px; height:10px; border-radius:2px; }
+  .ch-info { min-height:38px; margin-top:10px; padding:8px 12px; border-radius:10px; background:#f7f9fc; text-align:center; font-size:13px; color:var(--text); display:flex; align-items:center; justify-content:center; gap:8px; transition:background .15s; }
+  .ch-info.hint { color:var(--muted); }
+  .ch-info .sw { width:10px; height:10px; border-radius:2px; flex:none; }
+  .ch-info b { font-weight:700; }
   .chart-card .more { display:block; width:100%; margin-top:10px; background:transparent; color:var(--primary); border:1px solid var(--border); border-radius:8px; padding:7px; font:inherit; font-size:13px; cursor:pointer; }
   .chart-card .more:hover { border-color:var(--primary); background:#f0f4ff; }
   /* Модалка */
@@ -111,6 +112,11 @@
   .err-row .ans-line { padding:4px 0; }
   .err-row .ans-line.ok { color:var(--green); font-weight:600; }
   .err-row .ans-line.no { color:var(--red); }
+  .err-row .status { font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; }
+  .err-row .status.fixed { color:var(--green); background:var(--green-bg); }
+  .err-row .status.open { color:var(--red); background:var(--red-bg); }
+  .err-row .fix-btn { background:var(--primary); color:#fff; border:0; border-radius:8px; padding:7px 14px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; margin-top:10px; }
+  .err-row .fix-btn:hover { background:var(--primary-dark); }
   /* Поиск в "Все вопросы" */
   .search-box { width:100%; padding:11px 14px; border:1px solid var(--border); border-radius:10px; font-size:15px; font-family:inherit; margin-bottom:14px; background:#fff; color:var(--text); }
   .search-box:focus { outline:none; border-color:var(--primary); }
@@ -372,8 +378,8 @@ window.dispatchEvent(new Event('fb-ready'));
     }
     return out;
   }
-  function donut(themeMap, hoverText){
-    // themeMap: {1:n,2:n,...}; hoverText(theme, value, total) -> string
+  function donut(themeMap){
+    // themeMap: {1:n,2:n,...}
     const total = Object.values(themeMap).reduce((a,b)=>a+b,0);
     if(!total) return { svg: '', total: 0 };
     const R=70, r=42, cx=85, cy=85;
@@ -384,9 +390,9 @@ window.dispatchEvent(new Event('fb-ready'));
       acc += val;
       const end = acc/total * 2*Math.PI;
       const big = (end-start) > Math.PI ? 1 : 0;
-      // если один сегмент = вся окружность, рисуем полное кольцо
+      const dataAttrs = `data-theme="${t}" data-val="${val}" data-total="${total}"`;
       if(val===total){
-        segs.push(`<path d="M ${cx-R} ${cy} A ${R} ${R} 0 1 1 ${cx+R} ${cy} A ${R} ${R} 0 1 1 ${cx-R} ${cy} M ${cx-r} ${cy} A ${r} ${r} 0 1 0 ${cx+r} ${cy} A ${r} ${r} 0 1 0 ${cx-r} ${cy} Z" fill="${THEME_COLORS[t]}" fill-rule="evenodd"><title>${hoverText(t,val,total)}</title></path>`);
+        segs.push(`<path ${dataAttrs} d="M ${cx-R} ${cy} A ${R} ${R} 0 1 1 ${cx+R} ${cy} A ${R} ${R} 0 1 1 ${cx-R} ${cy} M ${cx-r} ${cy} A ${r} ${r} 0 1 0 ${cx+r} ${cy} A ${r} ${r} 0 1 0 ${cx-r} ${cy} Z" fill="${THEME_COLORS[t]}" fill-rule="evenodd"></path>`);
         return;
       }
       const x1=cx+R*Math.sin(start), y1=cy-R*Math.cos(start);
@@ -394,35 +400,45 @@ window.dispatchEvent(new Event('fb-ready'));
       const x3=cx+r*Math.sin(end),   y3=cy-r*Math.cos(end);
       const x4=cx+r*Math.sin(start), y4=cy-r*Math.cos(start);
       const d = `M ${x1} ${y1} A ${R} ${R} 0 ${big} 1 ${x2} ${y2} L ${x3} ${y3} A ${r} ${r} 0 ${big} 0 ${x4} ${y4} Z`;
-      segs.push(`<path d="${d}" fill="${THEME_COLORS[t]}"><title>${hoverText(t,val,total)}</title></path>`);
+      segs.push(`<path ${dataAttrs} d="${d}" fill="${THEME_COLORS[t]}"></path>`);
     });
     const svg = `<svg width="170" height="170" viewBox="0 0 170 170" role="img">
       <circle cx="${cx}" cy="${cy}" r="${R}" fill="#f0f3f8"/>
       ${segs.join('')}
-      <text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2733">${total}</text>
-      <text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="11" fill="#6b7785">всего</text>
+      <text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2733" pointer-events="none">${total}</text>
+      <text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="11" fill="#6b7785" pointer-events="none">всего</text>
     </svg>`;
     return { svg, total };
   }
-  function legendHTML(themeMap){
-    const items = [1,2,3,4,5].filter(t=>themeMap[t]>0).map(t=>
-      `<span class="lg"><span class="sw" style="background:${THEME_COLORS[t]}"></span>Т${t} · ${themeMap[t]}</span>`
-    );
-    return `<div class="legend">${items.join('')}</div>`;
-  }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function bindChartInfo(box, infoId, unit){
+    const info = document.getElementById(infoId); if(!info) return;
+    const setInfo = (t,v,tot)=>{
+      const pct = Math.round(v/tot*100);
+      info.classList.remove('hint');
+      info.innerHTML = `<span class="sw" style="background:${THEME_COLORS[t]}"></span>Тема ${t} · ${escapeHtml(THEMES[t])} — <b>${v} ${unit}</b> · ${pct}%`;
+    };
+    const paths = box.querySelectorAll('svg path[data-theme]');
+    paths.forEach(p=>{
+      const apply = ()=>{ setInfo(+p.dataset.theme, +p.dataset.val, +p.dataset.total); };
+      p.addEventListener('mouseenter', apply);
+      p.addEventListener('click', apply);
+      p.addEventListener('touchstart', e=>{ e.preventDefault(); apply(); }, { passive:false });
+    });
+  }
 
   function renderCharts(){
     // 1) Ошибки по темам
     const errAgg = aggregateByTheme(errorLogMem);
-    const errBox = document.getElementById('chartErrors');
-    if(!errBox) return;
+    const errBox = document.getElementById('chartErrors'); if(!errBox) return;
     const errTotal = Object.values(errAgg).reduce((a,b)=>a+b,0);
     if(!errTotal){
       errBox.innerHTML = '<div class="ch-empty">Ошибок ещё нет — порешай немного, чтобы появилась статистика.</div>';
     } else {
-      const { svg } = donut(errAgg, (t,v,tot)=>`${THEMES[t]}: ${v} ошибок (${Math.round(v/tot*100)}%)`);
-      errBox.innerHTML = svg + legendHTML(errAgg);
+      const { svg } = donut(errAgg);
+      errBox.innerHTML = svg + '<div class="ch-info hint" id="errInfo">Наведи или нажми на сектор</div>';
+      bindChartInfo(errBox, 'errInfo', 'ошибок');
     }
     // 2) Решено вопросов по темам
     const attAgg = aggregateByTheme(attemptsMem);
@@ -431,8 +447,9 @@ window.dispatchEvent(new Event('fb-ready'));
     if(!attTotal){
       attBox.innerHTML = '<div class="ch-empty">Пока ничего не решено.</div>';
     } else {
-      const { svg } = donut(attAgg, (t,v,tot)=>`${THEMES[t]}: ${v} ответов (${Math.round(v/tot*100)}%)`);
-      attBox.innerHTML = svg + legendHTML(attAgg);
+      const { svg } = donut(attAgg);
+      attBox.innerHTML = svg + '<div class="ch-info hint" id="attInfo">Наведи или нажми на сектор</div>';
+      bindChartInfo(attBox, 'attInfo', 'ответов');
     }
   }
 
@@ -473,10 +490,15 @@ window.dispatchEvent(new Event('fb-ready'));
       openModal('Подробнее по ошибкам', '<p>Ошибок пока не зафиксировано.</p>', '');
       return;
     }
+    const openSet = new Set(mistakesMem);
     const rows = entries.map(e=>{
       const q = qByNum(e.n); const a = ANS[e.n];
       const correctLetters = a.c.map(i=>LETTERS[i]).join(', ');
       const wrongLetters = (e.last||[]).map(i=>LETTERS[i]).join(', ') || '—';
+      const isOpen = openSet.has(e.n);
+      const statusHTML = isOpen
+        ? '<span class="status open">Не исправлена</span>'
+        : '<span class="status fixed">✓ Исправлена</span>';
       const optsHTML = q.o.map((opt,i)=>{
         const isCorrect = a.c.includes(i);
         const isPicked = (e.last||[]).includes(i);
@@ -484,22 +506,34 @@ window.dispatchEvent(new Event('fb-ready'));
         const tag = isCorrect ? '✓ ' : (isPicked ? '✗ ' : '   ');
         return `<div class="${cls}">${tag}${LETTERS[i]}. ${escapeHtml(opt)}</div>`;
       }).join('');
+      const fixBtn = isOpen ? `<button class="fix-btn" onclick="fixSingleMistake(${e.n})">Исправить</button>` : '';
       return `<div class="err-row" data-n="${e.n}">
         <div class="hd" onclick="this.parentElement.classList.toggle('open')">
           <span class="nm">№${e.n} · Тема ${q.t}: ${escapeHtml(THEMES[q.t])}</span>
-          <span class="cnt">${e.count}×</span>
+          <span style="display:flex;gap:8px;align-items:center">${statusHTML}<span class="cnt">${e.count}×</span></span>
         </div>
         <div class="det">
           <div style="font-weight:600;margin-bottom:6px">${escapeHtml(q.q)}</div>
           ${optsHTML}
           <div style="margin-top:8px;font-size:13px;color:var(--muted)">Твой последний ответ: <b>${wrongLetters}</b> · правильный: <b style="color:var(--green)">${correctLetters}</b></div>
           ${a.e?`<div class="theory" style="margin-top:10px"><div class="t-title">Пояснение</div><div>${escapeHtml(a.e)}</div></div>`:''}
+          ${fixBtn}
         </div>
       </div>`;
     }).join('');
-    openModal(`Подробнее по ошибкам (${entries.length})`, rows, '<button class="btn ghost" onclick="closeModal()">Закрыть</button>');
+    const openCount = entries.filter(e=>openSet.has(e.n)).length;
+    const summary = `<p style="margin:0 0 12px;color:var(--muted);font-size:13px">Всего: <b>${entries.length}</b> · не исправлено: <b style="color:var(--red)">${openCount}</b> · исправлено: <b style="color:var(--green)">${entries.length-openCount}</b></p>`;
+    openModal(`Подробнее по ошибкам`, summary + rows, '<button class="btn ghost" onclick="closeModal()">Закрыть</button>');
+  }
+  function fixSingleMistake(n){
+    closeModal();
+    order = [n];
+    currentMode = 'mistakes';
+    pos=0; sessionCorrect=0; sessionTotal=0; sessionWrong=[];
+    show('quiz'); renderQuestion(); window.scrollTo(0,0);
   }
   window.openErrorsDetail = openErrorsDetail;
+  window.fixSingleMistake = fixSingleMistake;
 
   // ---------- экзамен: пропорциональная выборка по темам ----------
   function buildExamOrder(){

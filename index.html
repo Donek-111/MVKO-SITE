@@ -78,6 +78,42 @@
   .who b { color:var(--text); }
   .sync-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#c0c5ce; margin-right:6px; vertical-align:middle; }
   .sync-dot.ok { background:var(--green); } .sync-dot.busy { background:#d99100; }
+  /* Статистика и графики */
+  .stats { margin-top:28px; }
+  .stats h3 { font-size:16px; margin:0 0 14px; color:var(--text); }
+  .charts { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:560px){ .charts { grid-template-columns:1fr; } }
+  .chart-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; }
+  .chart-card .ch-title { font-size:14px; font-weight:600; margin-bottom:8px; }
+  .chart-card .ch-empty { color:var(--muted); font-size:13px; text-align:center; padding:18px 0; }
+  .chart-card svg { display:block; margin:0 auto; }
+  .chart-card svg path { transition:opacity .15s, transform .15s; transform-origin:center; cursor:pointer; }
+  .chart-card svg path:hover { opacity:.85; transform:scale(1.03); }
+  .legend { display:flex; flex-wrap:wrap; gap:6px 12px; justify-content:center; margin-top:10px; font-size:12px; color:var(--muted); }
+  .legend .lg { display:flex; align-items:center; gap:5px; }
+  .legend .sw { width:10px; height:10px; border-radius:2px; }
+  .chart-card .more { display:block; width:100%; margin-top:10px; background:transparent; color:var(--primary); border:1px solid var(--border); border-radius:8px; padding:7px; font:inherit; font-size:13px; cursor:pointer; }
+  .chart-card .more:hover { border-color:var(--primary); background:#f0f4ff; }
+  /* Модалка */
+  .modal-bg { position:fixed; inset:0; background:rgba(20,30,50,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
+  .modal { background:#fff; border-radius:14px; width:100%; max-width:680px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+  .modal header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .modal header h3 { margin:0; font-size:17px; }
+  .modal .x { background:transparent; border:0; font-size:22px; color:var(--muted); cursor:pointer; line-height:1; }
+  .modal .body { padding:14px 20px; overflow:auto; }
+  .modal .foot { padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+  .err-row { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .err-row .hd { display:flex; justify-content:space-between; gap:8px; align-items:center; cursor:pointer; }
+  .err-row .hd .nm { font-weight:600; font-size:14px; }
+  .err-row .hd .cnt { font-size:12px; color:var(--red); font-weight:600; background:var(--red-bg); padding:2px 8px; border-radius:999px; }
+  .err-row .det { display:none; padding-top:10px; border-top:1px solid var(--border); margin-top:8px; font-size:14px; }
+  .err-row.open .det { display:block; }
+  .err-row .ans-line { padding:4px 0; }
+  .err-row .ans-line.ok { color:var(--green); font-weight:600; }
+  .err-row .ans-line.no { color:var(--red); }
+  /* Поиск в "Все вопросы" */
+  .search-box { width:100%; padding:11px 14px; border:1px solid var(--border); border-radius:10px; font-size:15px; font-family:inherit; margin-bottom:14px; background:#fff; color:var(--text); }
+  .search-box:focus { outline:none; border-color:var(--primary); }
 </style>
 </head>
 <body>
@@ -130,6 +166,22 @@
       </button>
     </div>
     <span class="footer-link" onclick="resetMistakes()">Очистить список ошибок</span>
+
+    <!-- СТАТИСТИКА -->
+    <div class="stats">
+      <h3>Статистика</h3>
+      <div class="charts">
+        <div class="chart-card">
+          <div class="ch-title">Ошибки по темам</div>
+          <div id="chartErrors"></div>
+          <button class="more" onclick="openErrorsDetail()">Подробнее</button>
+        </div>
+        <div class="chart-card">
+          <div class="ch-title">Решено вопросов по темам</div>
+          <div id="chartAttempts"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ВЫБОР ТЕМЫ -->
@@ -171,9 +223,13 @@
   <!-- ВСЕ ВОПРОСЫ -->
   <div id="all" class="hidden">
     <div class="topbar"><button class="btn ghost" onclick="goMenu()">← В меню</button><span class="progress" id="allCount"></span></div>
+    <input id="allSearch" class="search-box" type="search" placeholder="Поиск по формулировке вопроса или варианта…" autocomplete="off">
     <div class="filterbar" id="allFilter"></div>
     <div id="allList"></div>
   </div>
+
+  <!-- МОДАЛКИ (создаются динамически) -->
+  <div id="modalRoot"></div>
 
 </div>
 
@@ -229,10 +285,13 @@ window.dispatchEvent(new Event('fb-ready'));
   const ANS = (window.ANSWERS || {});
   const READY = ALLQ.filter(q => ANS[q.n] && Array.isArray(ANS[q.n].c) && ANS[q.n].c.length);
 
-  // ---------- Firebase: пользователь и облачные ошибки ----------
-  let currentUser = null;          // объект Firebase user
+  // ---------- Firebase: пользователь и облачные данные ----------
+  let currentUser = null;          // Firebase user
   let currentLogin = null;         // 'pavlova' | 'bahtinova' | 'malyshev'
-  let mistakesMem = [];            // массив номеров вопросов
+  let mistakesMem = [];            // очередь "работа над ошибками"
+  let attemptsMem = {};            // { n: count } — всего попыток на вопрос
+  let errorLogMem = {};            // { n: { count, last:[indices] } } — постоянный лог ошибок
+  let resumeExam = null;           // { order, pos, sessionCorrect, sessionTotal, sessionWrong } | null
   let saveQueue = Promise.resolve();
   let pendingSave = false;
 
@@ -248,9 +307,12 @@ window.dispatchEvent(new Event('fb-ready'));
     if(snap.exists()){
       const data = snap.data();
       mistakesMem = Array.isArray(data.mistakes) ? data.mistakes.slice() : [];
+      attemptsMem = (data.attempts && typeof data.attempts==='object') ? {...data.attempts} : {};
+      errorLogMem = (data.errorLog && typeof data.errorLog==='object') ? {...data.errorLog} : {};
+      resumeExam = (data.resumeExam && Array.isArray(data.resumeExam.order)) ? data.resumeExam : null;
     } else {
-      mistakesMem = [];
-      await setDoc(ref, { mistakes: [], login: currentLogin, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      mistakesMem = []; attemptsMem = {}; errorLogMem = {}; resumeExam = null;
+      await setDoc(ref, { mistakes: [], attempts:{}, errorLog:{}, resumeExam:null, login: currentLogin, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     }
     setSyncDot('ok');
   }
@@ -259,13 +321,12 @@ window.dispatchEvent(new Event('fb-ready'));
     pendingSave = true;
     setSyncDot('busy');
     saveQueue = saveQueue.then(async ()=>{
-      // дать ~400мс, чтобы собрать пачку правок
       await new Promise(r=>setTimeout(r,400));
       pendingSave = false;
       if(!currentUser) return;
       const { db, doc, updateDoc, setDoc, serverTimestamp } = window.__fb;
       const ref = doc(db,'users',currentUser.uid);
-      const payload = { mistakes: mistakesMem, updatedAt: serverTimestamp() };
+      const payload = { mistakes: mistakesMem, attempts: attemptsMem, errorLog: errorLogMem, resumeExam: resumeExam, updatedAt: serverTimestamp() };
       try { await updateDoc(ref, payload); }
       catch(e){ await setDoc(ref, { ...payload, login: currentLogin, createdAt: serverTimestamp() }, { merge:true }); }
       setSyncDot('ok');
@@ -274,6 +335,12 @@ window.dispatchEvent(new Event('fb-ready'));
   function saveMistakes(arr){ mistakesMem = [...new Set(arr)]; scheduleSave(); }
   function addMistake(n){ saveMistakes([...mistakesMem, n]); }
   function removeMistake(n){ saveMistakes(mistakesMem.filter(x => x !== n)); }
+  function bumpAttempt(n){ attemptsMem[n] = (attemptsMem[n]||0)+1; scheduleSave(); }
+  function logError(n, sel){
+    const prev = errorLogMem[n] || { count:0, last:[] };
+    errorLogMem[n] = { count: prev.count+1, last: [...sel].sort((a,b)=>a-b) };
+    scheduleSave();
+  }
 
   function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
   function qByNum(n){ return ALLQ.find(q => q.n === n); }
@@ -283,33 +350,202 @@ window.dispatchEvent(new Event('fb-ready'));
   let sessionCorrect=0, sessionTotal=0, sessionWrong=[], currentMode='exam';
 
   // ---------- меню ----------
+  const THEME_COLORS = { 1:'#3b6fed', 2:'#1faa4d', 3:'#f08c2e', 4:'#8a4cf0', 5:'#d83a3a' };
+
   function refreshMenu(){
     document.getElementById('readyCount').textContent = READY.length;
     document.getElementById('totalCount').textContent = ALLQ.length;
     const m = mistakesMem.filter(n => ANS[n]);
     document.getElementById('mistakesBadge').textContent = m.length ? `Ошибок: ${m.length}` : 'Ошибок пока нет';
+    renderCharts();
   }
   function resetMistakes(){ if(confirm('Очистить список ошибок?')){ saveMistakes([]); refreshMenu(); } }
 
+  // ---------- круговые диаграммы (donut, чистый SVG) ----------
+  function aggregateByTheme(map){
+    // map: { n: count } или { n: { count } }
+    const out = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+    for(const k in map){
+      const n = +k; const q = qByNum(n); if(!q) continue;
+      const v = (typeof map[k]==='number') ? map[k] : (map[k].count||0);
+      if(v && out[q.t]!=null) out[q.t] += v;
+    }
+    return out;
+  }
+  function donut(themeMap, hoverText){
+    // themeMap: {1:n,2:n,...}; hoverText(theme, value, total) -> string
+    const total = Object.values(themeMap).reduce((a,b)=>a+b,0);
+    if(!total) return { svg: '', total: 0 };
+    const R=70, r=42, cx=85, cy=85;
+    let acc=0; const segs=[];
+    [1,2,3,4,5].forEach(t=>{
+      const val = themeMap[t]||0; if(!val) return;
+      const start = acc/total * 2*Math.PI;
+      acc += val;
+      const end = acc/total * 2*Math.PI;
+      const big = (end-start) > Math.PI ? 1 : 0;
+      // если один сегмент = вся окружность, рисуем полное кольцо
+      if(val===total){
+        segs.push(`<path d="M ${cx-R} ${cy} A ${R} ${R} 0 1 1 ${cx+R} ${cy} A ${R} ${R} 0 1 1 ${cx-R} ${cy} M ${cx-r} ${cy} A ${r} ${r} 0 1 0 ${cx+r} ${cy} A ${r} ${r} 0 1 0 ${cx-r} ${cy} Z" fill="${THEME_COLORS[t]}" fill-rule="evenodd"><title>${hoverText(t,val,total)}</title></path>`);
+        return;
+      }
+      const x1=cx+R*Math.sin(start), y1=cy-R*Math.cos(start);
+      const x2=cx+R*Math.sin(end),   y2=cy-R*Math.cos(end);
+      const x3=cx+r*Math.sin(end),   y3=cy-r*Math.cos(end);
+      const x4=cx+r*Math.sin(start), y4=cy-r*Math.cos(start);
+      const d = `M ${x1} ${y1} A ${R} ${R} 0 ${big} 1 ${x2} ${y2} L ${x3} ${y3} A ${r} ${r} 0 ${big} 0 ${x4} ${y4} Z`;
+      segs.push(`<path d="${d}" fill="${THEME_COLORS[t]}"><title>${hoverText(t,val,total)}</title></path>`);
+    });
+    const svg = `<svg width="170" height="170" viewBox="0 0 170 170" role="img">
+      <circle cx="${cx}" cy="${cy}" r="${R}" fill="#f0f3f8"/>
+      ${segs.join('')}
+      <text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2733">${total}</text>
+      <text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="11" fill="#6b7785">всего</text>
+    </svg>`;
+    return { svg, total };
+  }
+  function legendHTML(themeMap){
+    const items = [1,2,3,4,5].filter(t=>themeMap[t]>0).map(t=>
+      `<span class="lg"><span class="sw" style="background:${THEME_COLORS[t]}"></span>Т${t} · ${themeMap[t]}</span>`
+    );
+    return `<div class="legend">${items.join('')}</div>`;
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function renderCharts(){
+    // 1) Ошибки по темам
+    const errAgg = aggregateByTheme(errorLogMem);
+    const errBox = document.getElementById('chartErrors');
+    if(!errBox) return;
+    const errTotal = Object.values(errAgg).reduce((a,b)=>a+b,0);
+    if(!errTotal){
+      errBox.innerHTML = '<div class="ch-empty">Ошибок ещё нет — порешай немного, чтобы появилась статистика.</div>';
+    } else {
+      const { svg } = donut(errAgg, (t,v,tot)=>`${THEMES[t]}: ${v} ошибок (${Math.round(v/tot*100)}%)`);
+      errBox.innerHTML = svg + legendHTML(errAgg);
+    }
+    // 2) Решено вопросов по темам
+    const attAgg = aggregateByTheme(attemptsMem);
+    const attBox = document.getElementById('chartAttempts');
+    const attTotal = Object.values(attAgg).reduce((a,b)=>a+b,0);
+    if(!attTotal){
+      attBox.innerHTML = '<div class="ch-empty">Пока ничего не решено.</div>';
+    } else {
+      const { svg } = donut(attAgg, (t,v,tot)=>`${THEMES[t]}: ${v} ответов (${Math.round(v/tot*100)}%)`);
+      attBox.innerHTML = svg + legendHTML(attAgg);
+    }
+  }
+
+  // ---------- универсальная модалка ----------
+  function openModal(titleHTML, bodyHTML, footHTML){
+    closeModal();
+    const root = document.getElementById('modalRoot');
+    root.innerHTML = `<div class="modal-bg" onclick="if(event.target===this) closeModal()">
+      <div class="modal" role="dialog">
+        <header><h3>${titleHTML}</h3><button class="x" onclick="closeModal()" aria-label="Закрыть">×</button></header>
+        <div class="body">${bodyHTML}</div>
+        ${footHTML?`<div class="foot">${footHTML}</div>`:''}
+      </div></div>`;
+  }
+  function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+  window.closeModal = closeModal;
+
+  // ---------- модалка возобновления экзамена ----------
+  function openResumeModal(){
+    const r = resumeExam;
+    const left = r.order.length - r.pos;
+    openModal('Незавершённый экзамен',
+      `<p>У тебя осталась незаконченная попытка экзамена:</p>
+       <p style="margin:6px 0 0;color:var(--muted);font-size:14px">Пройдено вопросов: <b>${r.pos}</b> из <b>${r.order.length}</b> · верно <b>${r.sessionCorrect}</b>/<b>${r.sessionTotal}</b> · осталось <b>${left}</b>.</p>`,
+      `<button class="btn ghost" onclick="closeModal(); startExamFresh()">Начать заново</button>
+       <button class="btn" onclick="closeModal(); continueExam()">Продолжить</button>`);
+  }
+  window.startExamFresh = startExamFresh;
+  window.continueExam = continueExam;
+
+  // ---------- модалка "Подробнее" по ошибкам ----------
+  function openErrorsDetail(){
+    const entries = Object.entries(errorLogMem)
+      .map(([n,v])=>({ n:+n, count:(v.count||0), last:(v.last||[]) }))
+      .filter(x=>x.count>0 && qByNum(x.n) && ANS[x.n])
+      .sort((a,b)=> b.count - a.count || a.n - b.n);
+    if(!entries.length){
+      openModal('Подробнее по ошибкам', '<p>Ошибок пока не зафиксировано.</p>', '');
+      return;
+    }
+    const rows = entries.map(e=>{
+      const q = qByNum(e.n); const a = ANS[e.n];
+      const correctLetters = a.c.map(i=>LETTERS[i]).join(', ');
+      const wrongLetters = (e.last||[]).map(i=>LETTERS[i]).join(', ') || '—';
+      const optsHTML = q.o.map((opt,i)=>{
+        const isCorrect = a.c.includes(i);
+        const isPicked = (e.last||[]).includes(i);
+        const cls = isCorrect ? 'ans-line ok' : (isPicked ? 'ans-line no' : 'ans-line');
+        const tag = isCorrect ? '✓ ' : (isPicked ? '✗ ' : '   ');
+        return `<div class="${cls}">${tag}${LETTERS[i]}. ${escapeHtml(opt)}</div>`;
+      }).join('');
+      return `<div class="err-row" data-n="${e.n}">
+        <div class="hd" onclick="this.parentElement.classList.toggle('open')">
+          <span class="nm">№${e.n} · Тема ${q.t}: ${escapeHtml(THEMES[q.t])}</span>
+          <span class="cnt">${e.count}×</span>
+        </div>
+        <div class="det">
+          <div style="font-weight:600;margin-bottom:6px">${escapeHtml(q.q)}</div>
+          ${optsHTML}
+          <div style="margin-top:8px;font-size:13px;color:var(--muted)">Твой последний ответ: <b>${wrongLetters}</b> · правильный: <b style="color:var(--green)">${correctLetters}</b></div>
+          ${a.e?`<div class="theory" style="margin-top:10px"><div class="t-title">Пояснение</div><div>${escapeHtml(a.e)}</div></div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+    openModal(`Подробнее по ошибкам (${entries.length})`, rows, '<button class="btn ghost" onclick="closeModal()">Закрыть</button>');
+  }
+  window.openErrorsDetail = openErrorsDetail;
+
   // ---------- экзамен: пропорциональная выборка по темам ----------
-  function startExam(){
-    if(!READY.length){ alert('Пока нет вопросов с ответами.'); return; }
+  function buildExamOrder(){
     const byTheme={}; READY.forEach(q => (byTheme[q.t]=byTheme[q.t]||[]).push(q));
     const themes=Object.keys(byTheme);
     const total=READY.length, target=Math.min(EXAM_SIZE,total);
     const alloc={};
     themes.forEach(t => alloc[t]=Math.min(byTheme[t].length, Math.round(target*byTheme[t].length/total)));
-    // подгонка суммы под target
     const sum=()=>themes.reduce((s,t)=>s+alloc[t],0);
-    while(sum()<target){ // добавить туда, где есть запас
+    while(sum()<target){
       let best=themes.filter(t=>alloc[t]<byTheme[t].length).sort((a,b)=>byTheme[b].length-byTheme[a].length)[0];
       if(best==null) break; alloc[best]++;
     }
     while(sum()>target){ let best=themes.filter(t=>alloc[t]>0).sort((a,b)=>alloc[b]-alloc[a])[0]; if(best==null)break; alloc[best]--; }
     let picked=[]; themes.forEach(t => picked=picked.concat(shuffle(byTheme[t]).slice(0,alloc[t])));
-    order=shuffle(picked).map(q=>q.n);
+    return shuffle(picked).map(q=>q.n);
+  }
+  function startExam(){
+    if(!READY.length){ alert('Пока нет вопросов с ответами.'); return; }
+    if(resumeExam && Array.isArray(resumeExam.order) && resumeExam.pos < resumeExam.order.length){
+      openResumeModal();
+      return;
+    }
+    order = buildExamOrder();
     beginSession('exam');
   }
+  function startExamFresh(){
+    order = buildExamOrder();
+    resumeExam = null; scheduleSave();
+    beginSession('exam');
+  }
+  function continueExam(){
+    order = resumeExam.order.slice();
+    pos = resumeExam.pos|0;
+    sessionCorrect = resumeExam.sessionCorrect|0;
+    sessionTotal = resumeExam.sessionTotal|0;
+    sessionWrong = Array.isArray(resumeExam.sessionWrong) ? resumeExam.sessionWrong.slice() : [];
+    currentMode = 'exam';
+    show('quiz'); renderQuestion(); window.scrollTo(0,0);
+  }
+  function saveExamSnapshot(){
+    if(currentMode !== 'exam') return;
+    resumeExam = { order: order.slice(), pos, sessionCorrect, sessionTotal, sessionWrong: sessionWrong.slice() };
+    scheduleSave();
+  }
+  function clearExamSnapshot(){ if(resumeExam){ resumeExam = null; scheduleSave(); } }
 
   // ---------- тренировка по темам ----------
   function renderThemes(){
@@ -386,18 +622,27 @@ window.dispatchEvent(new Event('fb-ready'));
       else if(selected.has(i)){ div.classList.add('wrong'); div.innerHTML+='<span class="mark no">✗ неверно</span>'; }
     });
     sessionTotal++;
+    bumpAttempt(q.n);
     const v=document.getElementById('verdict');
     if(ok){ sessionCorrect++; v.className='verdict ok'; v.textContent='✓ Правильно!'; if(currentMode==='mistakes') removeMistake(q.n); }
-    else { v.className='verdict no'; v.textContent='✗ Неправильно. Правильный ответ: '+a.c.map(i=>LETTERS[i]).join(', '); addMistake(q.n); if(!sessionWrong.includes(q.n)) sessionWrong.push(q.n); }
+    else {
+      v.className='verdict no';
+      v.textContent='✗ Неправильно. Правильный ответ: '+a.c.map(i=>LETTERS[i]).join(', ');
+      addMistake(q.n);
+      logError(q.n, selected);
+      if(!sessionWrong.includes(q.n)) sessionWrong.push(q.n);
+    }
     if(a.e){ const box=document.createElement('div'); box.className='theory';
       const tt=document.createElement('div'); tt.className='t-title'; tt.textContent='Пояснение';
       const tx=document.createElement('div'); tx.textContent=a.e; box.appendChild(tt); box.appendChild(tx);
       document.getElementById('theory').appendChild(box); }
     document.getElementById('progress').textContent=`Вопрос ${pos+1} из ${order.length}  ·  верно ${sessionCorrect}/${sessionTotal}`;
+    saveExamSnapshot();
     renderActions();
   }
-  function next(){ if(pos+1<order.length){ pos++; renderQuestion(); window.scrollTo(0,0); } else finish(); }
+  function next(){ if(pos+1<order.length){ pos++; saveExamSnapshot(); renderQuestion(); window.scrollTo(0,0); } else finish(); }
   function finish(){
+    clearExamSnapshot();
     show('result');
     const pct=sessionTotal?Math.round(sessionCorrect/sessionTotal*100):0;
     const p=document.getElementById('resPct'); p.textContent=pct+'%';
@@ -410,6 +655,7 @@ window.dispatchEvent(new Event('fb-ready'));
 
   // ---------- все вопросы ----------
   let allFilterTheme=0;
+  let allSearchQuery='';
   function showAll(){ show('all'); renderAllFilter(); renderAll(); }
   function renderAllFilter(){
     const el=document.getElementById('allFilter'); el.innerHTML='';
@@ -418,8 +664,17 @@ window.dispatchEvent(new Event('fb-ready'));
     mk('Все темы',0); [1,2,3,4,5].forEach(t=>mk('Тема '+t,t));
   }
   function renderAll(){
-    const list = (allFilterTheme? READY.filter(q=>q.t===allFilterTheme) : READY).slice().sort((a,b)=>a.n-b.n);
-    document.getElementById('allCount').textContent = `Показано: ${list.length}`;
+    let list = (allFilterTheme? READY.filter(q=>q.t===allFilterTheme) : READY).slice();
+    const qry = allSearchQuery.trim().toLowerCase();
+    if(qry){
+      list = list.filter(q=>{
+        if(q.q.toLowerCase().includes(qry)) return true;
+        if(String(q.n).includes(qry)) return true;
+        return (q.o||[]).some(o => o.toLowerCase().includes(qry));
+      });
+    }
+    list.sort((a,b)=>a.n-b.n);
+    document.getElementById('allCount').textContent = qry ? `Найдено: ${list.length}` : `Показано: ${list.length}`;
     const el=document.getElementById('allList'); el.innerHTML='';
     list.forEach(q=>{
       const a=ANS[q.n]; const cs=new Set(a.c);
@@ -431,7 +686,7 @@ window.dispatchEvent(new Event('fb-ready'));
         t.innerHTML='<div class="t-title">Пояснение</div>'; const x=document.createElement('div'); x.textContent=a.e; t.appendChild(x); wrap.appendChild(t); }
       el.appendChild(wrap);
     });
-    if(!list.length){ el.innerHTML='<p class="sub">В этой теме пока нет выверенных ответов.</p>'; }
+    if(!list.length){ el.innerHTML = '<p class="sub">' + (qry ? 'Ничего не найдено.' : 'В этой теме пока нет выверенных ответов.') + '</p>'; }
   }
 
   // ---------- навигация ----------
@@ -470,7 +725,8 @@ window.dispatchEvent(new Event('fb-ready'));
 
   async function logout(){
     try { await window.__fb.signOut(window.__fb.auth); } catch{}
-    currentUser = null; currentLogin = null; mistakesMem = [];
+    currentUser = null; currentLogin = null;
+    mistakesMem = []; attemptsMem = {}; errorLogMem = {}; resumeExam = null;
     document.getElementById('app').classList.add('hidden');
     document.getElementById('login').classList.remove('hidden');
     document.getElementById('loginPass').value = '';
@@ -490,6 +746,13 @@ window.dispatchEvent(new Event('fb-ready'));
     ['loginUser','loginPass'].forEach(id=>{
       document.getElementById(id).addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
     });
+    const sb = document.getElementById('allSearch');
+    if(sb){
+      sb.addEventListener('input', e=>{ allSearchQuery = e.target.value || ''; renderAll(); });
+      document.addEventListener('keydown', e=>{
+        if(e.key==='Escape' && document.getElementById('modalRoot').firstChild) closeModal();
+      });
+    }
   }
 
   // ---------- старт ----------
@@ -508,7 +771,8 @@ window.dispatchEvent(new Event('fb-ready'));
         catch(e){ console.warn('load failed', e); setSyncDot('idle'); }
         showApp();
       } else {
-        currentUser = null; mistakesMem = [];
+        currentUser = null;
+        mistakesMem = []; attemptsMem = {}; errorLogMem = {}; resumeExam = null;
         document.getElementById('app').classList.add('hidden');
         document.getElementById('login').classList.remove('hidden');
       }

@@ -64,13 +64,50 @@
   .chip { border:1px solid var(--border); background:#fff; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.active { background:var(--primary); color:#fff; border-color:var(--primary); }
   .hidden { display:none; }
+  /* Логин */
+  .login-wrap { max-width:380px; margin:80px auto 0; padding:0 16px; }
+  .login-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px 26px; box-shadow:0 4px 20px rgba(20,40,80,.05); }
+  .login-card h2 { margin:0 0 6px; font-size:22px; }
+  .login-card .sub { margin:0 0 22px; }
+  .field { margin-bottom:14px; }
+  .field label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .field input { width:100%; padding:11px 14px; border:1px solid var(--border); border-radius:10px; font-size:15px; font-family:inherit; background:#fff; color:var(--text); }
+  .field input:focus { outline:none; border-color:var(--primary); }
+  .login-err { color:var(--red); font-size:13px; margin:0 0 12px; min-height:18px; }
+  .who { font-size:13px; color:var(--muted); }
+  .who b { color:var(--text); }
+  .sync-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#c0c5ce; margin-right:6px; vertical-align:middle; }
+  .sync-dot.ok { background:var(--green); } .sync-dot.busy { background:#d99100; }
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<!-- ЛОГИН -->
+<div id="login" class="login-wrap">
+  <div class="login-card">
+    <h2>МВКО — вход</h2>
+    <p class="sub">Прогресс и ошибки сохраняются между устройствами.</p>
+    <div class="field">
+      <label for="loginUser">Логин</label>
+      <input id="loginUser" type="text" autocomplete="username" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="loginPass">Пароль</label>
+      <input id="loginPass" type="password" autocomplete="current-password">
+    </div>
+    <p class="login-err" id="loginErr"></p>
+    <button class="btn" id="loginBtn" style="width:100%">Войти</button>
+  </div>
+</div>
+
+<div class="wrap hidden" id="app">
 
   <!-- МЕНЮ -->
   <div id="menu">
+    <div class="topbar" style="margin-bottom:8px">
+      <span class="who"><span id="syncDot" class="sync-dot"></span>Вы: <b id="whoami">—</b></span>
+      <button class="btn ghost" onclick="logout()">Выйти</button>
+    </div>
     <h1>МВКО — тренажёр</h1>
     <p class="sub">Готово вопросов с ответами: <b id="readyCount">0</b> из <b id="totalCount">0</b></p>
     <div class="menu">
@@ -142,6 +179,41 @@
 
 <script src="questions.js"></script>
 <script src="answers.js"></script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence }
+  from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBTqJ265gQJkfOnwcCFYjEXZV-aw5NCiTg",
+  authDomain: "mvko-c9efc.firebaseapp.com",
+  projectId: "mvko-c9efc",
+  storageBucket: "mvko-c9efc.firebasestorage.app",
+  messagingSenderId: "1090245543374",
+  appId: "1:1090245543374:web:6402fbded21708720f979f"
+};
+
+const USERS = {
+  'pavlova':   { pass: '1234', display: 'Pavlova' },
+  'bahtinova': { pass: '4321', display: 'Bahtinova' },
+  'malyshev':  { pass: '0505', display: 'Malyshev' }
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+await setPersistence(auth, browserLocalPersistence).catch(()=>{});
+
+window.__fb = { auth, db, doc, getDoc, setDoc, updateDoc, serverTimestamp,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, USERS };
+
+// Стартуем после загрузки questions.js / answers.js
+window.dispatchEvent(new Event('fb-ready'));
+</script>
+
 <script>
   const LETTERS = ['А','Б','В','Г','Д','Е'];
   const THEMES = {
@@ -152,17 +224,54 @@
     5:'Международные кредитные отношения'
   };
   const EXAM_SIZE = 200;
-  const MIST_KEY = 'mvkoMistakes';
 
   const ALLQ = (window.QUESTIONS || []);
   const ANS = (window.ANSWERS || {});
-  // только вопросы, у которых есть выверенный ответ
   const READY = ALLQ.filter(q => ANS[q.n] && Array.isArray(ANS[q.n].c) && ANS[q.n].c.length);
 
-  // ---------- хранилище ошибок (память + localStorage по возможности) ----------
-  let mistakesMem = [];
-  try { mistakesMem = JSON.parse(localStorage.getItem(MIST_KEY)) || []; } catch { mistakesMem = []; }
-  function saveMistakes(arr){ mistakesMem = [...new Set(arr)]; try { localStorage.setItem(MIST_KEY, JSON.stringify(mistakesMem)); } catch {} }
+  // ---------- Firebase: пользователь и облачные ошибки ----------
+  let currentUser = null;          // объект Firebase user
+  let currentLogin = null;         // 'pavlova' | 'bahtinova' | 'malyshev'
+  let mistakesMem = [];            // массив номеров вопросов
+  let saveQueue = Promise.resolve();
+  let pendingSave = false;
+
+  function setSyncDot(state){ // 'idle' | 'busy' | 'ok'
+    const d = document.getElementById('syncDot'); if(!d) return;
+    d.classList.remove('ok','busy'); if(state==='ok') d.classList.add('ok'); else if(state==='busy') d.classList.add('busy');
+  }
+
+  async function loadUserDoc(uid){
+    const { db, doc, getDoc, setDoc, serverTimestamp } = window.__fb;
+    const ref = doc(db, 'users', uid);
+    const snap = await getDoc(ref);
+    if(snap.exists()){
+      const data = snap.data();
+      mistakesMem = Array.isArray(data.mistakes) ? data.mistakes.slice() : [];
+    } else {
+      mistakesMem = [];
+      await setDoc(ref, { mistakes: [], login: currentLogin, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    }
+    setSyncDot('ok');
+  }
+  function scheduleSave(){
+    if(pendingSave) return;
+    pendingSave = true;
+    setSyncDot('busy');
+    saveQueue = saveQueue.then(async ()=>{
+      // дать ~400мс, чтобы собрать пачку правок
+      await new Promise(r=>setTimeout(r,400));
+      pendingSave = false;
+      if(!currentUser) return;
+      const { db, doc, updateDoc, setDoc, serverTimestamp } = window.__fb;
+      const ref = doc(db,'users',currentUser.uid);
+      const payload = { mistakes: mistakesMem, updatedAt: serverTimestamp() };
+      try { await updateDoc(ref, payload); }
+      catch(e){ await setDoc(ref, { ...payload, login: currentLogin, createdAt: serverTimestamp() }, { merge:true }); }
+      setSyncDot('ok');
+    }).catch(e=>{ console.warn('sync error', e); setSyncDot('idle'); pendingSave=false; });
+  }
+  function saveMistakes(arr){ mistakesMem = [...new Set(arr)]; scheduleSave(); }
   function addMistake(n){ saveMistakes([...mistakesMem, n]); }
   function removeMistake(n){ saveMistakes(mistakesMem.filter(x => x !== n)); }
 
@@ -331,7 +440,81 @@
     if(id==='menu') refreshMenu(); if(id==='themes') renderThemes(); }
   function goMenu(){ show('menu'); }
 
-  refreshMenu();
+  // ---------- логин ----------
+  function showLoginErr(msg){ document.getElementById('loginErr').textContent = msg || ''; }
+  function setBusyLogin(b){ document.getElementById('loginBtn').disabled = b; document.getElementById('loginBtn').textContent = b?'Входим…':'Войти'; }
+
+  async function doLogin(){
+    showLoginErr('');
+    const login = (document.getElementById('loginUser').value||'').trim().toLowerCase();
+    const pass = document.getElementById('loginPass').value||'';
+    const USERS = window.__fb.USERS;
+    if(!USERS[login]){ showLoginErr('Неизвестный логин'); return; }
+    if(USERS[login].pass !== pass){ showLoginErr('Неверный пароль'); return; }
+    setBusyLogin(true);
+    const email = login + '@mvko.app';
+    const fb = window.__fb;
+    // безопасный пароль для Firebase Auth (своя соль + пользовательский пароль)
+    const fbPass = 'mvko-' + login + '-' + pass;
+    try {
+      await fb.signInWithEmailAndPassword(fb.auth, email, fbPass);
+    } catch(e){
+      if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials'){
+        try { await fb.createUserWithEmailAndPassword(fb.auth, email, fbPass); }
+        catch(e2){ showLoginErr('Ошибка входа: ' + (e2.code||e2.message)); setBusyLogin(false); return; }
+      } else { showLoginErr('Ошибка входа: ' + (e.code||e.message)); setBusyLogin(false); return; }
+    }
+    currentLogin = login;
+    setBusyLogin(false);
+  }
+
+  async function logout(){
+    try { await window.__fb.signOut(window.__fb.auth); } catch{}
+    currentUser = null; currentLogin = null; mistakesMem = [];
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('login').classList.remove('hidden');
+    document.getElementById('loginPass').value = '';
+  }
+  window.logout = logout;
+
+  function showApp(){
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    const u = window.__fb.USERS[currentLogin];
+    document.getElementById('whoami').textContent = u? u.display : currentLogin;
+    show('menu');
+  }
+
+  function bindLoginUI(){
+    document.getElementById('loginBtn').addEventListener('click', doLogin);
+    ['loginUser','loginPass'].forEach(id=>{
+      document.getElementById(id).addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+    });
+  }
+
+  // ---------- старт ----------
+  function bootstrap(){
+    bindLoginUI();
+    const fb = window.__fb;
+    fb.onAuthStateChanged(fb.auth, async (user)=>{
+      if(user){
+        currentUser = user;
+        if(!currentLogin){
+          // восстановили сессию: вытаскиваем логин из email
+          const email = user.email||''; const local = email.split('@')[0];
+          if(fb.USERS[local]) currentLogin = local;
+        }
+        try { await loadUserDoc(user.uid); }
+        catch(e){ console.warn('load failed', e); setSyncDot('idle'); }
+        showApp();
+      } else {
+        currentUser = null; mistakesMem = [];
+        document.getElementById('app').classList.add('hidden');
+        document.getElementById('login').classList.remove('hidden');
+      }
+    });
+  }
+  if(window.__fb) bootstrap(); else window.addEventListener('fb-ready', bootstrap, { once:true });
 </script>
 </body>
 </html>

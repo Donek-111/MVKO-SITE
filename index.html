@@ -544,9 +544,15 @@ window.dispatchEvent(new Event('fb-ready'));
 
   // ---------- экзамен: пропорциональная выборка по темам ----------
   function buildExamOrder(){
-    const byTheme={}; READY.forEach(q => (byTheme[q.t]=byTheme[q.t]||[]).push(q));
+    // Дедуп: в банке есть вопросы с одинаковой формулировкой (вариант 4 одного и того же),
+    // в экзамене они не должны повторяться — берём по одному представителю на текст.
+    const byText = {};
+    READY.forEach(q => (byText[q.q] = byText[q.q] || []).push(q));
+    const uniq = Object.values(byText).map(arr => arr[Math.floor(Math.random()*arr.length)]);
+
+    const byTheme={}; uniq.forEach(q => (byTheme[q.t]=byTheme[q.t]||[]).push(q));
     const themes=Object.keys(byTheme);
-    const total=READY.length, target=Math.min(EXAM_SIZE,total);
+    const total=uniq.length, target=Math.min(EXAM_SIZE,total);
     const alloc={};
     themes.forEach(t => alloc[t]=Math.min(byTheme[t].length, Math.round(target*byTheme[t].length/total)));
     const sum=()=>themes.reduce((s,t)=>s+alloc[t],0);
@@ -683,7 +689,7 @@ window.dispatchEvent(new Event('fb-ready'));
   }
   function next(){ if(pos+1<order.length){ pos++; saveExamSnapshot(); renderQuestion(); window.scrollTo(0,0); } else finish(); }
   function finish(){
-    clearExamSnapshot();
+    if(currentMode === 'exam') clearExamSnapshot();
     show('result');
     const pct=sessionTotal?Math.round(sessionCorrect/sessionTotal*100):0;
     const p=document.getElementById('resPct'); p.textContent=pct+'%';
